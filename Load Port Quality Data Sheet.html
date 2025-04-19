@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LNG Composition Extractor</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --secondary: #3498db;
+            --error: #e74c3c;
+            --success: #27ae60;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f6fa;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: var(--primary);
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .upload-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--primary);
+            padding: 3rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .drop-zone:hover {
+            background: #f8f9fa;
+            border-color: var(--secondary);
+        }
+
+        .file-input-label {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 8px 16px;
+            background: var(--secondary);
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .file-input-label:hover {
+            background: #2980b9;
+        }
+
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            background: white;
+            box-shadow: 0 1px 10px rgba(0,0,0,0.05);
+        }
+
+        .preview-table th,
+        .preview-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .preview-table th {
+            background: var(--primary);
+            color: white;
+        }
+
+        .button {
+            background: var(--secondary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 1rem;
+        }
+
+        .button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .loading {
+            background: #ecf5ff;
+            color: var(--primary);
+        }
+
+        .success {
+            background: #e8f6ef;
+            color: var(--success);
+        }
+
+        .error {
+            background: #fdedee;
+            color: var(--error);
+        }
+
+        #fileName {
+            margin-top: 1rem;
+            color: #7f8c8d;
+        }
+
+        .raw-data {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .debug-toggle {
+            background: #7f8c8d;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-top: 5px;
+            cursor: pointer;
+        }
+
+        .metadata-section {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+        }
+
+        .metadata-section p {
+            margin: 0.5rem 0;
+            color: var(--primary);
+        }
+
+        .file-preview {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .file-preview h3 {
+            color: var(--primary);
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .drop-zone {
+                padding: 1.5rem;
+            }
+            
+            .preview-table th,
+            .preview-table td {
+                padding: 8px;
+                font-size: 0.9em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LNG Composition Extractor</h1>
+        
+        <div class="upload-section">
+            <div class="drop-zone" id="dropZone">
+                <p>Drag & Drop PDF files here</p>
+                <p>or</p>
+                <label class="file-input-label">
+                    Choose PDF Files
+                    <input type="file" id="pdfInput" accept="application/pdf" multiple style="display:none;">
+                </label>
+                <p id="fileName"></p>
+            </div>
+            <div id="status" class="status hidden"></div>
+        </div>
+
+        <div id="previewSection" class="hidden">
+            <div id="filePreviews"></div>
+            <button id="exportBtn" class="button" disabled>Export to Excel</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        const expectedComponents = [
+            'METHANE', 'ETHANE', 'PROPANE', 'ISO BUTANE',
+            'NORMAL BUTANE', 'ISO PENTANE', 'NEO PENTANE',
+            'NORMAL PENTANE', 'HEXANE PLUS', 'NITROGEN',
+            'CARBON DIOXIDE', 'OXYGEN'
+        ];
+
+        const componentAliases = {
+            'METHANE': ['METHANE', 'CH4', 'METH4NE', 'MET HANE'],
+            'ETHANE': ['ETHANE', 'C2H6', 'ETH4NE'],
+            'PROPANE': ['PROPANE', 'C3H8', 'PR0PANE'],
+            'ISO BUTANE': ['ISO BUTANE', 'ISO-BUTANE', 'ISOBUTANE', 'I-BUTANE', 'IS0 BUTANE'],
+            'NORMAL BUTANE': ['NORMAL BUTANE', 'N-BUTANE', 'N BUTANE', 'N0RMAL BUTANE'],
+            'ISO PENTANE': ['ISO PENTANE', 'ISO-PENTANE', 'ISOPENTANE', 'I-PENTANE', 'IS0 PENTANE'],
+            'NEO PENTANE': ['NEO PENTANE', 'NEO-PENTANE', 'NEOPENTANE', 'NE0 PENTANE'],
+            'NORMAL PENTANE': ['NORMAL PENTANE', 'N-PENTANE', 'N PENTANE', 'N0RMAL PENTANE'],
+            'HEXANE PLUS': ['HEXANE PLUS', 'NORMAL HEXANE', 'N-HEXANE', 'N HEXANE', 'HEXANEPLUS'],
+            'NITROGEN': ['NITROGEN', 'N2', 'NITR0GEN', 'N1TROGEN'],
+            'CARBON DIOXIDE': ['CARBON DIOXIDE', 'CO2', 'C02', 'CARB0N DIOXIDE'],
+            'OXYGEN': ['OXYGEN', 'O2', '0XYGEN']
+        };
+
+        let allFilesData = [];
+        let exportEnabled = false;
+
+        const statusElement = document.getElementById('status');
+        const dropZone = document.getElementById('dropZone');
+        const pdfInput = document.getElementById('pdfInput');
+        const exportBtn = document.getElementById('exportBtn');
+        const fileNameElement = document.getElementById('fileName');
+        const previewSection = document.getElementById('previewSection');
+        const filePreviews = document.getElementById('filePreviews');
+
+        async function parsePDF(file) {
+            const fileData = {
+                fileName: file.name,
+                compositionData: [],
+                metadata: { vesselName: 'N/A', fileNumber: 'N/A', liquidTemp: 'N/A', loadDate: 'N/A' },
+                rawText: '',
+                debugInfo: { 
+                    textExtractionIssues: [], 
+                    metadataIssues: [], 
+                    compositionIssues: [], 
+                    ocrUsed: false, 
+                    ocrRawText: '', 
+                    ocrCorrectedText: '',
+                    ocrCorrections: []
+                }
+            };
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+
+                // Step 1: Try extracting text with pdf.js
+                let fullText = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const content = await page.getTextContent();
+                    const lines = {};
+                    for (const item of content.items) {
+                        if (!item.str || item.str.trim() === '') continue;
+                        const y = Math.round(item.transform[5] * 100) / 100;
+                        if (!lines[y]) lines[y] = [];
+                        lines[y].push(item);
+                    }
+                    const sortedYs = Object.keys(lines).sort((a, b) => b - a);
+                    for (const y of sortedYs) {
+                        lines[y].sort((a, b) => a.transform[4] - b.transform[4]);
+                        const lineText = lines[y].map(item => item.str).join(' ').trim();
+                        if (lineText) fullText += lineText + '\n';
+                    }
+                }
+
+                console.log(`Raw Text from pdf.js for ${file.name}:`, fullText);
+
+                // Step 2: If little or no text is extracted, use OCR (limit to first 2 pages)
+                if (!fullText.trim() || fullText.length < 50) {
+                    fileData.debugInfo.textExtractionIssues.push('Insufficient text extracted with pdf.js. Attempting OCR on first 2 pages.');
+                    showStatus(`Performing OCR on ${file.name} (Page 1 of ${Math.min(pdf.numPages, 2)})`, 'loading');
+
+                    let ocrText = '';
+                    const maxPagesToProcess = Math.min(pdf.numPages, 2); // Limit to first 2 pages
+                    for (let i = 1; i <= maxPagesToProcess; i++) {
+                        showStatus(`Performing OCR on ${file.name} (Page ${i} of ${maxPagesToProcess})`, 'loading');
+                        const page = await pdf.getPage(i);
+                        const viewport = page.getViewport({ scale: 1.5 }); // Reduced scale for faster processing
+                        const canvas = document.createElement('canvas');
+                        const context = canvas.getContext('2d');
+                        canvas.height = viewport.height;
+                        canvas.width = viewport.width;
+
+                        await page.render({
+                            canvasContext: context,
+                            viewport: viewport
+                        }).promise;
+
+                        const imageData = canvas.toDataURL('image/png');
+                        const { data: { text } } = await Tesseract.recognize(imageData, 'eng', {
+                            logger: (m) => console.log(`OCR Progress for ${file.name}, Page ${i}:`, m)
+                        });
+                        ocrText += text + '\n';
+
+                        canvas.remove();
+                    }
+
+                    fileData.debugInfo.ocrUsed = true;
+                    fileData.debugInfo.ocrRawText = ocrText;
+                    console.log(`Raw OCR Text for ${file.name}:`, ocrText);
+
+                    // Step 3: Post-process OCR text to fix common errors
+                    let correctedText = ocrText;
+                    const corrections = [];
+
+                    // Fix common OCR misrecognitions
+                    const ocrFixes = [
+                        { pattern: /METH4NE/gi, replacement: 'METHANE' },
+                        { pattern: /ETH4NE/gi, replacement: 'ETHANE' },
+                        { pattern: /PR0PANE/gi, replacement: 'PROPANE' },
+                        { pattern: /IS0/gi, replacement: 'ISO' },
+                        { pattern: /N0RMAL/gi, replacement: 'NORMAL' },
+                        { pattern: /NE0/gi, replacement: 'NEO' },
+                        { pattern: /N1TROGEN/gi, replacement: 'NITROGEN' },
+                        { pattern: /NITR0GEN/gi, replacement: 'NITROGEN' },
+                        { pattern: /C02/gi, replacement: 'CO2' },
+                        { pattern: /CARB0N/gi, replacement: 'CARBON' },
+                        { pattern: /0XYGEN/gi, replacement: 'OXYGEN' },
+                        { pattern: /([0-9]),([0-9])/g, replacement: '$1.$2' }, // Fix commas in numbers (e.g., 94,9823 -> 94.9823)
+                        { pattern: /%\s*mol/gi, replacement: '% mol' } // Standardize unit format
+                    ];
+
+                    ocrFixes.forEach(({ pattern, replacement }) => {
+                        const matches = correctedText.match(pattern);
+                        if (matches) {
+                            corrections.push(`Replaced "${matches.join(', ')}" with "${replacement}"`);
+                            correctedText = correctedText.replace(pattern, replacement);
+                        }
+                    });
+
+                    fileData.debugInfo.ocrCorrectedText = correctedText;
+                    fileData.debugInfo.ocrCorrections = corrections;
+                    console.log(`OCR Corrections for ${file.name}:`, corrections);
+                    console.log(`Corrected OCR Text for ${file.name}:`, correctedText);
+
+                    if (!correctedText.trim()) {
+                        fileData.debugInfo.textExtractionIssues.push('OCR failed to extract any text after correction.');
+                    } else {
+                        fullText = correctedText;
+                    }
+                }
+
+                if (!fullText.trim()) {
+                    fileData.debugInfo.textExtractionIssues.push('No text extracted after attempting OCR.');
+                }
+
+                fileData.rawText = fullText;
+                console.log(`Final Raw Text for ${file.name}:`, fullText);
+
+                processText(fullText, fileData);
+                return fileData;
+            } catch (error) {
+                fileData.debugInfo.textExtractionIssues.push(`Error during PDF parsing: ${error.message}`);
+                showStatus(`Error processing ${file.name}: ${error.message}`, 'error');
+                console.error(`Processing error for ${file.name}:`, error);
+                return null;
+            }
+        }
+
+        function processText(text, fileData) {
+            try {
+                const normalizedText = text.replace(/\s+/g, ' ').trim();
+                console.log(`Normalized Text for ${fileData.fileName}:`, normalizedText);
+
+                if (!normalizedText) {
+                    fileData.debugInfo.metadataIssues.push('Normalized text is empty after processing.');
+                    return;
+                }
+
+                const vesselNameMatch = normalizedText.match(/VESSEL\s+([A-Z\s]+)(?:\s+TERMINAL|\s+DATE|$)/i) ||
+                                       normalizedText.match(/VESSEL\s*[:\-]?\s*([A-Z\s]+)/i);
+                const fileNumberMatch = normalizedText.match(/FILE\s*#\s*([A-Z0-9-\/]+)/i) ||
+                                       normalizedText.match(/FILE\s*(?:NO|NUMBER|#)?[:\-]?\s*([A-Z0-9-\/]+)/i);
+                const liquidTempMatch = normalizedText.match(/LIQUID\s*TEMPERATURE\s*AFTER\s*LOADING\s*([-]?\d+\.\d+)\s*°C/i) ||
+                                       normalizedText.match(/LIQUID\s*TEMP(?:ERATURE)?\s*[:\-]?\s*([-]?\d+\.\d+)\s*°C/i);
+                const dateRangeMatch = normalizedText.match(/DATE[S]?\s*FROM\s*([A-Za-z]+\s+\d{1,2},\s*\d{4})\s*TO\s*([A-Za-z]+\s+\d{1,2},\s*\d{4})/i) ||
+                                      normalizedText.match(/LOAD\s*DATE\s*[:\-]?\s*([A-Za-z]+\s+\d{1,2},\s*\d{4})/i) ||
+                                      normalizedText.match(/\b([A-Za-z]+\s+\d{1,2},\s*\d{4})\b/i);
+
+                fileData.metadata.vesselName = vesselNameMatch ? vesselNameMatch[1].trim() : 'N/A';
+                fileData.metadata.fileNumber = fileNumberMatch ? fileNumberMatch[1].trim() : 'N/A';
+                fileData.metadata.liquidTemp = liquidTempMatch ? liquidTempMatch[1].trim() : 'N/A';
+                fileData.metadata.loadDate = dateRangeMatch ? (dateRangeMatch[2] || dateRangeMatch[1]).trim() : 'N/A';
+
+                if (fileData.metadata.vesselName === 'N/A') fileData.debugInfo.metadataIssues.push('Vessel Name not found.');
+                if (fileData.metadata.fileNumber === 'N/A') fileData.debugInfo.metadataIssues.push('File Number not found.');
+                if (fileData.metadata.liquidTemp === 'N/A') fileData.debugInfo.metadataIssues.push('Liquid Temperature not found.');
+                if (fileData.metadata.loadDate === 'N/A') fileData.debugInfo.metadataIssues.push('Load Date not found.');
+
+                console.log(`Metadata for ${fileData.fileName}:`, fileData.metadata);
+
+                const compFactorsMatch = normalizedText.match(/COMPOSITION\s*FACTORS\s*([\s\S]*?)(?:DENSITY\s*CALCULATIONS|$)/i);
+                const analysisMatch = normalizedText.match(/REPORT\s*OF\s*ANALYSIS\s*([\s\S]*?)(?:Except\s*where\s*explicitly|$)/i);
+
+                const compFactorsSection = compFactorsMatch ? compFactorsMatch[1].trim() : '';
+                const analysisSection = analysisMatch ? analysisMatch[1].trim() : '';
+
+                console.log(`Composition Factors Section for ${fileData.fileName}:`, compFactorsSection);
+                console.log(`Analysis Section for ${fileData.fileName}:`, analysisSection);
+
+                const foundComponents = {};
+                const unmatchedComponents = [];
+
+                if (compFactorsSection) {
+                    const lines = compFactorsSection.split('\n').map(line => line.trim()).filter(line => line);
+                    console.log(`Composition Factors Lines for ${fileData.fileName}:`, lines);
+
+                    lines.forEach((line, index) => {
+                        const pattern = /^(METHANE|ETHANE|PROPANE|ISO\s*BUTANE|N-BUTANE|N-PENTANE|NITROGEN)\s+([\d.,]+)\s+[\d.,]+\s+[\d.,]+\s+[\d.,]+/i;
+                        const match = line.match(pattern);
+
+                        if (match) {
+                            const rawName = match[1].trim();
+                            const componentName = normalizeName(rawName);
+                            const liquid = parseFloat(match[2].replace(',', '.')) * 100;
+
+                            console.log(`Comp Factors Line ${index + 1} Match for ${fileData.fileName}:`, { rawName, componentName, liquid });
+
+                            const standardName = getStandardComponentName(componentName);
+                            if (!isNaN(liquid) && standardName) {
+                                foundComponents[standardName] = { liquid, vapor: foundComponents[standardName]?.vapor || 0 };
+                            } else {
+                                unmatchedComponents.push({ rawName, componentName, standardName, liquid, reason: standardName ? 'Invalid liquid value' : 'Unmatched component name' });
+                                fileData.debugInfo.compositionIssues.push(`Comp Factors Line ${index + 1}: ${rawName} - ${standardName ? 'Invalid liquid value' : 'Unmatched component name'}`);
+                            }
+                        } else {
+                            fileData.debugInfo.compositionIssues.push(`Comp Factors Line ${index + 1} No Match: ${line}`);
+                        }
+                    });
+                } else {
+                    fileData.debugInfo.compositionIssues.push('Composition Factors section not found.');
+                }
+
+                if (analysisSection) {
+                    const lines = analysisSection.split('\n').map(line => line.trim()).filter(line => line);
+                    console.log(`Analysis Section Lines for ${fileData.fileName}:`, lines);
+
+                    lines.forEach((line, index) => {
+                        const pattern = /^(METHANE|ETHANE|PROPANE|ISO\s*BUTANE|NORMAL\s*BUTANE|ISO\s*PENTANE|NORMAL\s*PENTANE|NORMAL\s*HEXANE|NITROGEN|CARBON\s*DIOXIDE|OXYGEN)\s+(?:ISO\s*6974\s+)?([\d.,]+)\s*(?:%\s*mol)?\s*([\d.,]+)?\s*(?:%\s*mol)?/i;
+                        const match = line.match(pattern);
+
+                        if (match) {
+                            const rawName = match[1].trim();
+                            const componentName = normalizeName(rawName);
+                            const liquid = parseFloat(match[2].replace(',', '.'));
+                            const vapor = match[3] ? parseFloat(match[3].replace(',', '.')) : 0;
+
+                            console.log(`Analysis Line ${index + 1} Match for ${fileData.fileName}:`, { rawName, componentName, liquid, vapor });
+
+                            const standardName = getStandardComponentName(componentName);
+                            if (!isNaN(liquid) && standardName) {
+                                foundComponents[standardName] = { liquid, vapor };
+                            } else {
+                                unmatchedComponents.push({ rawName, componentName, standardName, liquid, vapor, reason: standardName ? 'Invalid liquid value' : 'Unmatched component name' });
+                                fileData.debugInfo.compositionIssues.push(`Analysis Line ${index + 1}: ${rawName} - ${standardName ? 'Invalid liquid value' : 'Unmatched component name'}`);
+                            }
+                        } else {
+                            fileData.debugInfo.compositionIssues.push(`Analysis Line ${index + 1} No Match: ${line}`);
+                        }
+                    });
+                } else {
+                    fileData.debugInfo.compositionIssues.push('Analysis section not found.');
+                }
+
+                const pattern = /(METHANE|ETHANE|PROPANE|ISO\s*BUTANE|NORMAL\s*BUTANE|ISO\s*PENTANE|NORMAL\s*PENTANE|NORMAL\s*HEXANE|NITROGEN|CARBON\s*DIOXIDE|OXYGEN)\s+(?:ISO\s*6974\s+)?([\d.,]+)\s*(?:%\s*mol)?\s*([\d.,]+)?\s*(?:%\s*mol)?/gi;
+                let match;
+                while ((match = pattern.exec(normalizedText)) !== null) {
+                    const rawName = match[1].trim();
+                    const componentName = normalizeName(rawName);
+                    const liquid = parseFloat(match[2].replace(',', '.'));
+                    const vapor = match[3] ? parseFloat(match[3].replace(',', '.')) : 0;
+
+                    console.log(`Fallback Match for ${fileData.fileName}:`, { rawName, componentName, liquid, vapor });
+
+                    const standardName = getStandardComponentName(componentName);
+                    if (!isNaN(liquid) && standardName) {
+                        foundComponents[standardName] = { liquid, vapor };
+                    } else {
+                        unmatchedComponents.push({ rawName, componentName, standardName, liquid, vapor, reason: standardName ? 'Invalid liquid value' : 'Unmatched component name' });
+                        fileData.debugInfo.compositionIssues.push(`Fallback Match: ${rawName} - ${standardName ? 'Invalid liquid value' : 'Unmatched component name'}`);
+                    }
+                }
+
+                console.log(`Parsed Components for ${fileData.fileName}:`, foundComponents);
+                console.log(`Unmatched Components for ${fileData.fileName}:`, unmatchedComponents);
+
+                fileData.compositionData = expectedComponents.map(comp => {
+                    const standardName = getStandardComponentName(comp);
+                    return {
+                        name: comp,
+                        liquid: foundComponents[standardName]?.liquid || 0,
+                        vapor: foundComponents[standardName]?.vapor || 0
+                    };
+                });
+
+                if (!fileData.compositionData.some(c => c.liquid > 0 || c.vapor > 0)) {
+                    fileData.debugInfo.compositionIssues.push('No valid composition data found after parsing.');
+                }
+            } catch (error) {
+                fileData.debugInfo.compositionIssues.push(`Error processing text content: ${error.message}`);
+                showStatus(`Error processing text content for ${fileData.fileName}. Check console for details.`, 'error');
+                console.error(`Text processing error for ${fileData.fileName}:`, error);
+            }
+        }
+
+        async function processFiles(files) {
+            allFilesData = [];
+            filePreviews.innerHTML = '';
+            exportEnabled = false;
+            exportBtn.disabled = true;
+            previewSection.classList.add('hidden');
+            showStatus('Processing PDFs...', 'loading');
+
+            const fileNames = Array.from(files).map(file => file.name).join(', ');
+            fileNameElement.textContent = `Files: ${fileNames}`;
+
+            let hasValidData = false;
+            for (const file of files) {
+                if (file.type !== 'application/pdf') {
+                    showStatus(`Skipping ${file.name}: Not a PDF file`, 'error');
+                    continue;
+                }
+
+                const fileData = await parsePDF(file);
+                if (fileData) {
+                    if (fileData.compositionData.some(c => c.liquid > 0 || c.vapor > 0)) {
+                        allFilesData.push(fileData);
+                        displayFilePreview(fileData);
+                        hasValidData = true;
+                    } else {
+                        showStatus(`No valid data extracted from ${file.name}. Check raw data and console logs.`, 'error');
+                    }
+                    console.log(`Debug Info for ${file.name}:`, fileData.debugInfo);
+                }
+            }
+
+            if (hasValidData) {
+                previewSection.classList.remove('hidden');
+                exportEnabled = true;
+                exportBtn.disabled = false;
+                showStatus('All files processed successfully!', 'success');
+            } else {
+                showStatus('No valid data found in any file.', 'error');
+            }
+        }
+
+        function normalizeName(name) {
+            return name.trim()
+                .toUpperCase()
+                .replace(/[\s-]+/g, ' ')
+                .replace(/N\s*BUTANE/gi, 'NORMAL BUTANE')
+                .replace(/N\s*PENTANE/gi, 'NORMAL PENTANE')
+                .replace(/N\s*HEXANE/gi, 'HEXANE PLUS');
+        }
+
+        function getStandardComponentName(name) {
+            const normalized = normalizeName(name);
+            for (const standardName in componentAliases) {
+                if (componentAliases[standardName].includes(normalized)) {
+                    return standardName;
+                }
+            }
+            return expectedComponents.includes(normalized) ? normalized : null;
+        }
+
+        function displayFilePreview(fileData) {
+            const filePreview = document.createElement('div');
+            filePreview.className = 'file-preview';
+            filePreview.innerHTML = `
+                <h3>File: ${fileData.fileName}</h3>
+                <div class="metadata-section">
+                    <p><strong>Vessel Name:</strong> ${fileData.metadata.vesselName}</p>
+                    <p><strong>File #:</strong> ${fileData.metadata.fileNumber}</p>
+                    <p><strong>Load Date:</strong> ${fileData.metadata.loadDate}</p>
+                    <p><strong>Liquid Temperature After Loading (°C):</strong> ${fileData.metadata.liquidTemp}</p>
+                </div>
+                <table class="preview-table">
+                    <thead>
+                        <tr>
+                            <th>Component</th>
+                            <th>Liquid (%)</th>
+                            <th>Vapor (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${fileData.compositionData.map(comp => `
+                            <tr>
+                                <td>${comp.name}</td>
+                                <td>${comp.liquid.toFixed(4)}</td>
+                                <td>${comp.vapor.toFixed(4)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                <button class="debug-toggle" onclick="toggleRawData(this, \`${fileData.rawText.replace(/`/g, '\\`')}\`)">Show Raw Data</button>
+                <div class="raw-data hidden">${fileData.rawText}</div>
+                <button class="debug-toggle" onclick="toggleDebugInfo(this, \`${JSON.stringify(fileData.debugInfo).replace(/`/g, '\\`')}\`)">Show Debug Info</button>
+                <div class="raw-data hidden">${JSON.stringify(fileData.debugInfo, null, 2)}</div>
+            `;
+            filePreviews.appendChild(filePreview);
+        }
+
+        function toggleRawData(button, rawText) {
+            const rawDataDiv = button.nextElementSibling;
+            if (rawDataDiv.classList.contains('hidden')) {
+                rawDataDiv.classList.remove('hidden');
+                rawDataDiv.textContent = rawText;
+                button.textContent = 'Hide Raw Data';
+            } else {
+                rawDataDiv.classList.add('hidden');
+                button.textContent = 'Show Raw Data';
+            }
+        }
+
+        function toggleDebugInfo(button, debugInfo) {
+            const debugInfoDiv = button.nextElementSibling;
+            if (debugInfoDiv.classList.contains('hidden')) {
+                debugInfoDiv.classList.remove('hidden');
+                debugInfoDiv.textContent = JSON.parse(debugInfo);
+                button.textContent = 'Hide Debug Info';
+            } else {
+                debugInfoDiv.classList.add('hidden');
+                button.textContent = 'Show Debug Info';
+            }
+        }
+
+        function dateToExcelSerial(dateStr) {
+            if (!dateStr || dateStr === 'N/A') return '';
+            try {
+                const date = new Date(dateStr);
+                if (isNaN(date.getTime())) return '';
+                const excelEpoch = new Date(1899, 11, 30);
+                const diffTime = date.getTime() - excelEpoch.getTime();
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays;
+            } catch (e) {
+                console.error('Date conversion error:', e);
+                return '';
+            }
+        }
+
+        function formatSheetName(dateStr, index) {
+            if (!dateStr || dateStr === 'N/A') return `Load_Date_Unknown_${index}`;
+            let formatted = dateStr.replace(/,/g, '').replace(/\s+/g, '_');
+            formatted = `Load_Date_${formatted}`;
+            formatted = formatted.replace(/[\[\]\:\*\?\/\\']/g, '');
+            if (formatted.length > 31) {
+                formatted = formatted.substring(0, 31 - 3 - String(index).length) + `_${index}`;
+            } else {
+                formatted += `_${index}`;
+            }
+            return formatted;
+        }
+
+        function exportToExcel() {
+            if (!exportEnabled) return;
+
+            const wb = XLSX.utils.book_new();
+
+            allFilesData.forEach((fileData, index) => {
+                const wsData = [];
+                let rowIndex = 0;
+
+                wsData[rowIndex++] = ['Load Port Quality for every LNG operation', '', ''];
+                wsData[rowIndex++] = ['Email to:', 'LNG.Reports@Intertek.com', ''];
+                wsData[rowIndex++] = ['', '', ''];
+
+                wsData[rowIndex++] = ['Vessel Name', fileData.metadata.vesselName, ''];
+                const loadDateRow = rowIndex;
+                const loadDateValue = dateToExcelSerial(fileData.metadata.loadDate);
+                wsData[rowIndex++] = ['Load Date', loadDateValue, ''];
+                wsData[rowIndex++] = ['Load Port / Terminal', 'Mozambique / Coral Sul FLNG', ''];
+                wsData[rowIndex++] = ['ITS Ref. Number', fileData.metadata.fileNumber, ''];
+                wsData[rowIndex++] = ['LNG Load Temp', `${fileData.metadata.liquidTemp} °C`, ''];
+
+                const components = fileData.compositionData.reduce((acc, comp) => {
+                    acc[comp.name] = comp.liquid;
+                    return acc;
+                }, { 'NEO PENTANE': 0, 'HEXANE PLUS': 0 });
+
+                wsData[rowIndex++] = ['Methane', components['METHANE'], 'mol%'];
+                wsData[rowIndex++] = ['Ethane', components['ETHANE'], 'mol%'];
+                wsData[rowIndex++] = ['Propane', components['PROPANE'], 'mol%'];
+                wsData[rowIndex++] = ['Iso Butane', components['ISO BUTANE'], 'mol%'];
+                wsData[rowIndex++] = ['Normal Butane', components['NORMAL BUTANE'], 'mol%'];
+                wsData[rowIndex++] = ['Iso Pentane', components['ISO PENTANE'], 'mol%'];
+                wsData[rowIndex++] = ['Neo Pentane', components['NEO PENTANE'], 'mol%'];
+                wsData[rowIndex++] = ['Normal Pentane', components['NORMAL PENTANE'], 'mol%'];
+                wsData[rowIndex++] = ['Hexane Plus', components['HEXANE PLUS'], 'mol%'];
+                wsData[rowIndex++] = ['Nitrogen', components['NITROGEN'], 'mol%'];
+                wsData[rowIndex++] = ['Carbon Dioxide', components['CARBON DIOXIDE'], 'mol%'];
+                wsData[rowIndex++] = ['Oxygen', components['OXYGEN'], 'mol%'];
+
+                const totalComposition = Object.values(components).reduce((sum, val) => sum + (isNaN(val) ? 0 : val), 0);
+                wsData[rowIndex++] = ['Total Composition', totalComposition, 'mol%'];
+
+                const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+                if (!ws['!merges']) ws['!merges'] = [];
+                ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } });
+                ws['!merges'].push({ s: { r: 1, c: 1 }, e: { r: 1, c: 2 } });
+
+                if (loadDateValue !== '') {
+                    const loadDateCell = `B${loadDateRow + 1}`;
+                    ws[loadDateCell] = {
+                        t: 'n',
+                        v: loadDateValue,
+                        z: 'm/d/yyyy'
+                    };
+                }
+
+                ws['!cols'] = [
+                    { wch: 20 },
+                    { wch: 20 },
+                    { wch: 10 }
+                ];
+
+                const sheetName = formatSheetName(fileData.metadata.loadDate, index + 1);
+                XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            });
+
+            XLSX.writeFile(wb, `Load_Port_Quality_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        }
+
+        function showStatus(message, type = 'loading') {
+            statusElement.className = `status ${type}`;
+            statusElement.textContent = message;
+            statusElement.classList.remove('hidden');
+        }
+
+        pdfInput.addEventListener('change', function(e) {
+            const files = e.target.files;
+            if (files.length > 0) {
+                processFiles(files);
+            } else {
+                showStatus('Please select at least one PDF file', 'error');
+            }
+        });
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#3498db';
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#2c3e50';
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#2c3e50';
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                processFiles(files);
+            } else {
+                showStatus('Please drop at least one PDF file', 'error');
+            }
+        });
+
+        exportBtn.addEventListener('click', exportToExcel);
+    </script>
+</body>
+</html>
